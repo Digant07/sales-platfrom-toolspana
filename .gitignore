@@ -1,0 +1,11 @@
+node_modules
+client/node_modules
+.env
+.env.local
+*.log
+server/crm.db
+server/crm.db-wal
+server/crm.db-shm
+client/dist
+dist
+.DS_Store
