@@ -9,3 +9,4 @@ server/crm.db-shm
 client/dist
 dist
 .DS_Store
+
