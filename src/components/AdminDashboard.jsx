@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import LeadDetailsModal from './LeadDetailsModal';
 import CallLogModal from './CallLogModal';
+import EditAgentModal from './EditAgentModal';
 import {
   LayoutDashboard,
   Users,
@@ -33,7 +34,9 @@ import {
   PhoneForwarded,
   Copy,
   ArrowUpRight,
-  History
+  History,
+  KeyRound,
+  Edit2
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -73,6 +76,7 @@ export default function AdminDashboard() {
   // 3. Agent list state
   const [agents, setAgents] = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
+  const [editingAgent, setEditingAgent] = useState(null);
   const [newAgent, setNewAgent] = useState({ name: '', username: '', password: '', phone: '' });
   const [creatingAgent, setCreatingAgent] = useState(false);
 
@@ -1728,47 +1732,55 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Agent Performance List (8 Cols) */}
-              <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs">
-                <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center justify-between">
-                  <span>Caller Performance & Live Status</span>
+              <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200/90 p-5 sm:p-6 shadow-xs">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                  <div>
+                    <h3 className="font-bold text-slate-950 text-sm tracking-tight">Telecaller Staff & Credentials</h3>
+                    <p className="text-[11px] text-slate-500">Manage caller accounts, update names, reset passwords, and audit calling shifts</p>
+                  </div>
                   <button
                     onClick={loadAgents}
-                    className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                    className="text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition flex items-center gap-1.5 shadow-2xs"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Refresh
+                    <span>Refresh</span>
                   </button>
-                </h3>
+                </div>
 
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-700 font-bold uppercase">
+                    <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
                       <tr>
-                        <th className="px-3 py-2.5">Agent</th>
-                        <th className="px-3 py-2.5">Status</th>
-                        <th className="px-3 py-2.5">Active Call</th>
+                        <th className="px-3 py-2.5">Telecaller</th>
+                        <th className="px-3 py-2.5">Live Status</th>
+                        <th className="px-3 py-2.5">Active Lead</th>
                         <th className="px-3 py-2.5">Today Calls</th>
                         <th className="px-3 py-2.5">Lifetime</th>
-                        <th className="px-3 py-2.5">Avg Time</th>
-                        <th className="px-3 py-2.5 text-right">Account</th>
+                        <th className="px-3 py-2.5">Avg Talk</th>
+                        <th className="px-3 py-2.5 text-right">Account Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {agents.map((a) => (
-                        <tr key={a.id} className="hover:bg-slate-50">
+                        <tr key={a.id} className="hover:bg-slate-50/80 transition">
                           <td className="px-3 py-3">
-                            <span className="font-bold text-slate-900 block">{a.name}</span>
-                            <span className="font-mono text-slate-400 text-[11px]">@{a.username}</span>
+                            <span className="font-bold text-slate-950 block">{a.name}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-slate-500 text-[11px]">@{a.username}</span>
+                              {a.phone && (
+                                <span className="font-mono text-slate-400 text-[10px]">· {a.phone}</span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="px-3 py-3">
                             {a.is_online ? (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                 Online
                               </span>
                             ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                                 Offline
                               </span>
                             )}
@@ -1776,42 +1788,56 @@ export default function AdminDashboard() {
 
                           <td className="px-3 py-3 max-w-[130px] truncate text-slate-700">
                             {a.active_lead_name ? (
-                              <span className="font-semibold text-blue-600 text-[11px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                              <span className="font-semibold text-slate-900 text-[11px] bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
                                 {a.active_lead_name}
                               </span>
                             ) : (
-                              <span className="text-slate-400">—</span>
+                              <span className="text-slate-400 font-mono text-[11px]">Idle / Standby</span>
                             )}
                           </td>
 
-                          <td className="px-3 py-3 font-bold text-slate-900 font-mono">
+                          <td className="px-3 py-3 font-bold text-slate-950 font-mono tabular-nums">
                             {a.calls_today}
                           </td>
 
-                          <td className="px-3 py-3 text-slate-600 font-mono">
+                          <td className="px-3 py-3 text-slate-600 font-mono tabular-nums">
                             {a.total_calls_lifetime}
                           </td>
 
-                          <td className="px-3 py-3 font-mono text-slate-600">
+                          <td className="px-3 py-3 font-mono text-slate-600 tabular-nums">
                             {a.avg_duration_seconds ? `${Math.floor(a.avg_duration_seconds / 60)}m ${a.avg_duration_seconds % 60}s` : '—'}
                           </td>
 
-                          <td className="px-3 py-3 text-right whitespace-nowrap space-x-2">
+                          <td className="px-3 py-3 text-right whitespace-nowrap space-x-1.5">
+                            {/* Manage Credentials Button */}
+                            <button
+                              onClick={() => setEditingAgent(a)}
+                              className="text-[11px] font-semibold px-2.5 py-1 rounded-lg text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 transition inline-flex items-center gap-1 shadow-2xs"
+                              title="Edit name, phone, or reset password"
+                            >
+                              <KeyRound className="w-3 h-3 text-slate-600" />
+                              <span>Edit / Password</span>
+                            </button>
+
+                            {/* View Call Logs */}
                             <button
                               onClick={() => handleViewAgentLogs(a.id)}
-                              className="text-[11px] font-semibold px-2.5 py-1 rounded-lg text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition inline-flex items-center gap-1"
-                              title="View this agent's call logs"
+                              className="text-[11px] font-semibold px-2 py-1 rounded-lg text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 transition inline-flex items-center gap-1"
+                              title="View this agent's call activity logs"
                             >
-                              <History className="w-3 h-3" />
-                              <span>Call Logs</span>
+                              <History className="w-3 h-3 text-slate-500" />
+                              <span>Logs</span>
                             </button>
+
+                            {/* Toggle Active Status */}
                             <button
                               onClick={() => handleToggleAgentStatus(a)}
-                              className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${
+                              className={`text-[11px] font-semibold px-2 py-1 rounded-lg border transition ${
                                 a.is_active
-                                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
-                                  : 'text-slate-400 bg-slate-50 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700'
+                                  ? 'text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300'
+                                  : 'text-slate-500 bg-slate-100 border-slate-200 hover:bg-emerald-50 hover:text-emerald-800'
                               }`}
+                              title={a.is_active ? 'Click to deactivate agent' : 'Click to activate agent'}
                             >
                               {a.is_active ? 'Active' : 'Disabled'}
                             </button>
@@ -1824,57 +1850,65 @@ export default function AdminDashboard() {
               </div>
 
               {/* Create Agent Account Card (4 Cols) */}
-              <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs">
-                <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-indigo-600" />
-                  <span>Create Telecaller Account</span>
-                </h3>
+              <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 p-5 sm:p-6 shadow-xs">
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                  <UserCheck className="w-4 h-4 text-slate-700" />
+                  <h3 className="font-bold text-slate-950 text-sm tracking-tight">Create Telecaller Account</h3>
+                </div>
 
-                <form onSubmit={handleCreateAgent} className="space-y-3 text-xs">
+                <form onSubmit={handleCreateAgent} className="space-y-3.5 text-xs">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Full Name</label>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Full Name <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="text"
                       required
                       value={newAgent.name}
                       onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
                       placeholder="e.g. Ramesh Verma"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-900 focus:border-slate-900 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Username (Login ID)</label>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Username (Login ID) <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="text"
                       required
                       value={newAgent.username}
                       onChange={(e) => setNewAgent({ ...newAgent, username: e.target.value })}
                       placeholder="e.g. agent3"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-900 focus:border-slate-900 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Password</label>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Initial Password <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="password"
                       required
                       value={newAgent.password}
                       onChange={(e) => setNewAgent({ ...newAgent, password: e.target.value })}
                       placeholder="••••••••"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-900 focus:border-slate-900 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Phone Number (Optional)</label>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Phone Number (Optional)
+                    </label>
                     <input
                       type="tel"
                       value={newAgent.phone}
                       onChange={(e) => setNewAgent({ ...newAgent, phone: e.target.value })}
                       placeholder="+91 9800000000"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-900 focus:border-slate-900 focus:outline-none"
                     />
                   </div>
 
@@ -1882,9 +1916,9 @@ export default function AdminDashboard() {
                     <button
                       type="submit"
                       disabled={creatingAgent}
-                      className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md shadow-indigo-600/30 transition disabled:opacity-50"
+                      className="w-full py-2.5 px-4 bg-slate-950 hover:bg-slate-900 text-white font-bold rounded-lg shadow-xs transition disabled:opacity-50 text-xs"
                     >
-                      {creatingAgent ? 'Creating Account...' : 'Create Agent Account'}
+                      {creatingAgent ? 'Creating Account...' : 'Provision Agent Account'}
                     </button>
                   </div>
                 </form>
@@ -1908,6 +1942,16 @@ export default function AdminDashboard() {
         <CallLogModal
           log={selectedCallLog}
           onClose={() => setSelectedCallLog(null)}
+        />
+      )}
+
+      {/* Edit Agent Credentials Modal */}
+      {editingAgent && (
+        <EditAgentModal
+          agent={editingAgent}
+          onClose={() => setEditingAgent(null)}
+          onUpdated={loadAgents}
+          onDeleted={loadAgents}
         />
       )}
     </div>

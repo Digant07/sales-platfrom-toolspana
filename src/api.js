@@ -106,6 +106,10 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
+    deleteAgent: (id) =>
+      request(`/admin/agents/${id}`, {
+        method: 'DELETE',
+      }),
 
     seedSampleLeads: () => request('/admin/leads/seed-sample', { method: 'POST' }),
 

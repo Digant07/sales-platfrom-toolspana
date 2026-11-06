@@ -660,11 +660,28 @@ router.post('/agents', async (req, res) => {
 router.patch('/agents/:id', async (req, res) => {
   try {
     const agentId = req.params.id;
-    const { is_active, password } = req.body;
+    const { name, username, phone, is_active, password } = req.body;
 
-    const agent = await db.get("SELECT id FROM users WHERE id = ? AND role = 'agent'", [agentId]);
+    const agent = await db.get("SELECT id, username, name FROM users WHERE id = ? AND role = 'agent'", [agentId]);
     if (!agent) {
-      return res.status(404).json({ error: 'Agent not found.' });
+      return res.status(404).json({ error: 'Agent account not found.' });
+    }
+
+    if (name && name.trim()) {
+      await db.run('UPDATE users SET name = ? WHERE id = ?', [name.trim(), agentId]);
+    }
+
+    if (typeof phone !== 'undefined') {
+      await db.run('UPDATE users SET phone = ? WHERE id = ?', [phone ? phone.trim() : null, agentId]);
+    }
+
+    if (username && username.trim().toLowerCase() !== agent.username) {
+      const cleanUsername = username.trim().toLowerCase();
+      const existing = await db.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?', [cleanUsername, agentId]);
+      if (existing) {
+        return res.status(400).json({ error: 'An account with this username already exists. Please choose a different username.' });
+      }
+      await db.run('UPDATE users SET username = ? WHERE id = ?', [cleanUsername, agentId]);
     }
 
     if (typeof is_active !== 'undefined') {
@@ -672,15 +689,39 @@ router.patch('/agents/:id', async (req, res) => {
     }
 
     if (password && password.trim()) {
+      if (password.trim().length < 4) {
+        return res.status(400).json({ error: 'New password must be at least 4 characters long.' });
+      }
       const salt = bcrypt.genSaltSync(10);
       const passwordHash = bcrypt.hashSync(password.trim(), salt);
       await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, agentId]);
     }
 
-    return res.json({ success: true, message: 'Agent updated successfully.' });
+    return res.json({ success: true, message: `Agent '${name || agent.name}' updated successfully.` });
   } catch (err) {
     console.error('Update agent error:', err);
-    return res.status(500).json({ error: 'Failed to update agent.' });
+    return res.status(500).json({ error: 'Failed to update agent: ' + err.message });
+  }
+});
+
+router.delete('/agents/:id', async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const agent = await db.get("SELECT id, name FROM users WHERE id = ? AND role = 'agent'", [agentId]);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent account not found.' });
+    }
+
+    // Release any currently locked lead assigned to this agent back to Pending
+    await db.run("UPDATE leads SET status = 'Pending', assigned_agent_id = NULL, locked_at = NULL WHERE assigned_agent_id = ? AND status = 'Locked_In_Progress'", [agentId]);
+
+    // Delete user account
+    await db.run("DELETE FROM users WHERE id = ?", [agentId]);
+
+    return res.json({ success: true, message: `Agent '${agent.name}' deleted successfully.` });
+  } catch (err) {
+    console.error('Delete agent error:', err);
+    return res.status(500).json({ error: 'Failed to delete agent: ' + err.message });
   }
 });
 

@@ -11,9 +11,14 @@ async function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required. Please log in.' });
   }
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid or expired token.' });
+  }
+
+  try {
     // Check user active status in database
     const user = await db.get('SELECT id, name, username, role, is_active FROM users WHERE id = ?', [decoded.id]);
     if (!user) {
@@ -23,13 +28,18 @@ async function authenticateToken(req, res, next) {
       return res.status(403).json({ error: 'User account is deactivated. Contact administrator.' });
     }
 
-    // Update last_active_at
-    await db.run('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+    // Update last_active_at (non-fatal if it fails)
+    try {
+      await db.run('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+    } catch (e) {
+      // Ignore background timestamp update failures
+    }
 
     req.user = user;
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token.' });
+    console.error('Auth verification DB error:', err);
+    return res.status(500).json({ error: 'Database error during authentication check: ' + err.message });
   }
 }
 
