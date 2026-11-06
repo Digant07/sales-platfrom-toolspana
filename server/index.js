@@ -20,29 +20,35 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     service: 'Sequential Lead Dialer CRM API',
     database: db.isTurso ? 'Turso Cloud SQLite' : 'Local SQLite',
+    tursoConfigured: Boolean(process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL),
     timestamp: new Date().toISOString()
   });
 });
 
-// API Routes
+// API Routes: mount both with and without /api prefix for Vercel rewrite resilience
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
 app.use('/api/agent', agentRoutes);
+app.use('/agent', agentRoutes);
+
 app.use('/api/admin', adminRoutes);
+app.use('/admin', adminRoutes);
 
 // Run auto seed on start
 seedDefaults().catch(console.error);
 
-// Serve frontend static build if built
+// Serve frontend static build if built locally
 const distPath = path.resolve(__dirname, '../dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.use((req, res, next) => {
-    if (req.method === 'GET' && !req.path.startsWith('/api')) {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/auth') && !req.path.startsWith('/agent') && !req.path.startsWith('/admin')) {
       return res.sendFile(path.resolve(distPath, 'index.html'));
     }
     next();

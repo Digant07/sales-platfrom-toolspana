@@ -5,10 +5,20 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
+// GET /api/auth/login (Health & status check if visited in browser)
+router.get('/login', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'Auth Service',
+    database: db.isTurso ? 'Turso Cloud SQLite' : 'Local SQLite',
+    message: 'Login endpoint is active. Send a POST request with { username, password } to log in.',
+  });
+});
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password } = req.body || {};
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required.' });
@@ -29,7 +39,11 @@ router.post('/login', async (req, res) => {
     }
 
     // Update last active
-    await db.run('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+    try {
+      await db.run('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+    } catch (e) {
+      console.warn('Failed to update last_active_at:', e.message);
+    }
 
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, name: user.name },
@@ -49,7 +63,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err);
-    return res.status(500).json({ error: 'Internal server error during login.' });
+    return res.status(500).json({ error: 'Internal server error during login: ' + err.message });
   }
 });
 
