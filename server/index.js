@@ -37,16 +37,13 @@ app.use('/api/admin', adminRoutes);
 // Run auto seed on start
 seedDefaults().catch(console.error);
 
-// Serve frontend static build if built locally
+// Serve frontend static build if built
 const distPath = path.resolve(__dirname, '../dist');
-const clientDistPath = path.resolve(__dirname, '../client/dist');
-const staticPath = fs.existsSync(distPath) ? distPath : (fs.existsSync(clientDistPath) ? clientDistPath : null);
-
-if (staticPath) {
-  app.use(express.static(staticPath));
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
   app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api')) {
-      return res.sendFile(path.resolve(staticPath, 'index.html'));
+      return res.sendFile(path.resolve(distPath, 'index.html'));
     }
     next();
   });
