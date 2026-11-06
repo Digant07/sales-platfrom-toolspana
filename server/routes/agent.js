@@ -73,6 +73,36 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// GET /api/agent/recent-calls - Get caller's own recent logged calls
+router.get('/recent-calls', async (req, res) => {
+  try {
+    const agentId = req.user.id;
+    const logs = await db.all(`
+      SELECT 
+        cl.id,
+        cl.lead_id,
+        cl.disposition,
+        cl.notes,
+        cl.follow_up_date,
+        cl.called_at,
+        cl.duration_seconds,
+        l.lead_name,
+        l.phone_number,
+        l.lead_id_code
+      FROM call_logs cl
+      LEFT JOIN leads l ON cl.lead_id = l.id
+      WHERE cl.agent_id = ?
+      ORDER BY cl.called_at DESC
+      LIMIT 20
+    `, [agentId]);
+
+    return res.json({ logs: logs || [] });
+  } catch (err) {
+    console.error('Agent recent calls error:', err);
+    return res.status(500).json({ error: 'Failed to fetch recent call logs.' });
+  }
+});
+
 // GET /api/agent/current-lead
 // Strictly returns ONLY the active locked lead for this agent, or null if none is locked.
 // Prevents skipping by refreshing the page!

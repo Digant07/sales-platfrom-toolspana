@@ -57,6 +57,7 @@ export const api = {
   // Agent Endpoints (Strictly 1 record at a time)
   agent: {
     getStats: () => request('/agent/stats'),
+    getRecentCalls: () => request('/agent/recent-calls'),
     getCurrentLead: () => request('/agent/current-lead'),
     getNextLead: () => request('/agent/next-lead', { method: 'POST' }),
     submitLead: (payload) =>
