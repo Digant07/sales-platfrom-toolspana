@@ -38,12 +38,15 @@ app.use('/api/admin', adminRoutes);
 seedDefaults().catch(console.error);
 
 // Serve frontend static build if built locally
+const distPath = path.resolve(__dirname, '../dist');
 const clientDistPath = path.resolve(__dirname, '../client/dist');
-if (fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
+const staticPath = fs.existsSync(distPath) ? distPath : (fs.existsSync(clientDistPath) ? clientDistPath : null);
+
+if (staticPath) {
+  app.use(express.static(staticPath));
   app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api')) {
-      return res.sendFile(path.resolve(clientDistPath, 'index.html'));
+      return res.sendFile(path.resolve(staticPath, 'index.html'));
     }
     next();
   });
