@@ -1,15 +1,19 @@
 const path = require('path');
 require('dotenv').config();
 
-const isTurso = Boolean(process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL);
+const TURSO_URL_DEFAULT = 'libsql://sales-dialer-digant.aws-ap-south-1.turso.io';
+const TURSO_TOKEN_DEFAULT = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTM4NzkyODEsImlkIjoiMDFhMWFiODktMjMwMS03YzdjLThjYjYtOTQyY2I3ZDhkODBhIiwia2lkIjoiVXZSWWR5MTVmeXBDei1fdE1rVFNlYjRwSWpoWkMxNkFDU1d1Q2h6RVZrQSIsInJpZCI6ImIzYjQyZDc2LTY3YmUtNDRkMC05ZTQzLTc5N2M4NzUzOTgzNyJ9.2cq1ORBcsX5LPfnyAb8NtsI--7vwITbdKOGWn_tAG1mQPfPMr3Kyuzm0v3W66xtFUszaj4ciyFVcEl27iheiAg';
+
+const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || TURSO_URL_DEFAULT;
+const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || TURSO_TOKEN_DEFAULT;
+
+const isTurso = Boolean(url && authToken);
 
 let db;
 let initPromise = null;
 
 if (isTurso) {
   const { createClient } = require('@libsql/client');
-  const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
 
   console.log('⚡ Connecting to Turso Cloud SQLite:', url);
 
