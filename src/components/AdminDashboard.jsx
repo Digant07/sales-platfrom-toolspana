@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import LeadDetailsModal from './LeadDetailsModal';
+import CallLogModal from './CallLogModal';
 import {
   LayoutDashboard,
   Users,
@@ -27,14 +28,19 @@ import {
   ChevronRight,
   TrendingUp,
   UserCheck,
-  FileText
+  FileText,
+  Headphones,
+  PhoneForwarded,
+  Copy,
+  ArrowUpRight,
+  History
 } from 'lucide-react';
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
 
   // Active navigation tab
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'leads' | 'upload' | 'manual' | 'agents'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'call-logs' | 'leads' | 'upload' | 'manual' | 'agents'
 
   // Global feedback messages
   const [successMsg, setSuccessMsg] = useState('');
@@ -93,17 +99,124 @@ export default function AdminDashboard() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [importing, setImporting] = useState(false);
 
+  // 6. Call Activity & Audit Logs state (All Agents Call Details & Analytics)
+  const [callLogs, setCallLogs] = useState([]);
+  const [callLogsLoading, setCallLogsLoading] = useState(false);
+  const [callLogsPagination, setCallLogsPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
+  const [callLogsSummary, setCallLogsSummary] = useState({
+    total_calls: 0,
+    total_duration_seconds: 0,
+    avg_duration_seconds: 0,
+    interested_count: 0,
+    callback_count: 0,
+    not_interested_count: 0,
+    unreachable_count: 0,
+    conversion_rate: 0,
+  });
+  const [agentBreakdown, setAgentBreakdown] = useState([]);
+  const [callLogSearch, setCallLogSearch] = useState('');
+  const [callLogAgent, setCallLogAgent] = useState('all');
+  const [callLogDisposition, setCallLogDisposition] = useState('all');
+  const [callLogDateRange, setCallLogDateRange] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month'
+  const [selectedCallLog, setSelectedCallLog] = useState(null);
+  const [copiedPhone, setCopiedPhone] = useState('');
+
   // Initial load
   useEffect(() => {
     loadAnalytics();
     loadAgents();
     loadLeads(1);
+    loadCallLogs(1);
   }, []);
 
-  // When filters or search change
+  // When filters or search change for leads
   useEffect(() => {
     loadLeads(1);
   }, [filterStatus, filterAgent]);
+
+  // When filters change for call logs
+  useEffect(() => {
+    if (activeTab === 'call-logs') {
+      loadCallLogs(1);
+    }
+  }, [activeTab, callLogAgent, callLogDisposition, callLogDateRange]);
+
+  const loadCallLogs = async (page = 1) => {
+    try {
+      setCallLogsLoading(true);
+      const res = await api.admin.getCallLogs({
+        page,
+        limit: 25,
+        search: callLogSearch,
+        agent_id: callLogAgent,
+        disposition: callLogDisposition,
+        date_range: callLogDateRange,
+      });
+      setCallLogs(res.call_logs || []);
+      setCallLogsPagination(res.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 });
+      setCallLogsSummary(res.summary || {
+        total_calls: 0,
+        total_duration_seconds: 0,
+        avg_duration_seconds: 0,
+        interested_count: 0,
+        callback_count: 0,
+        not_interested_count: 0,
+        unreachable_count: 0,
+        conversion_rate: 0,
+      });
+      setAgentBreakdown(res.agent_breakdown || []);
+    } catch (err) {
+      console.error('Call logs error:', err);
+      setErrorMsg('Failed to load call audit logs: ' + err.message);
+    } finally {
+      setCallLogsLoading(false);
+    }
+  };
+
+  const handleExportCallLogs = async () => {
+    try {
+      setSuccessMsg('Preparing call activity audit spreadsheet...');
+      await api.admin.downloadCallLogsExport({
+        search: callLogSearch,
+        agent_id: callLogAgent,
+        disposition: callLogDisposition,
+        date_range: callLogDateRange,
+      });
+      setSuccessMsg('Call logs spreadsheet downloaded successfully!');
+    } catch (err) {
+      setErrorMsg('Call logs export failed: ' + err.message);
+    }
+  };
+
+  const handleViewAgentLogs = (agentId) => {
+    setCallLogAgent(String(agentId));
+    setActiveTab('call-logs');
+  };
+
+  const copyNumber = (num) => {
+    if (!num) return;
+    navigator.clipboard.writeText(num);
+    setCopiedPhone(num);
+    setTimeout(() => setCopiedPhone(''), 2000);
+  };
+
+  const formatDuration = (totalSec) => {
+    const s = parseInt(totalSec, 10) || 0;
+    if (s <= 0) return '0s';
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    if (m === 0) return `${rem}s`;
+    return `${m}m ${rem < 10 ? '0' : ''}${rem}s`;
+  };
+
+  const formatTotalTime = (totalSec) => {
+    const s = parseInt(totalSec, 10) || 0;
+    if (s <= 0) return '0h 0m';
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h === 0) return `${m}m`;
+    return `${h}h ${m}m`;
+  };
 
   const loadAnalytics = async () => {
     try {
@@ -407,6 +520,23 @@ export default function AdminDashboard() {
           </button>
 
           <button
+            onClick={() => { setActiveTab('call-logs'); loadCallLogs(1); }}
+            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+              activeTab === 'call-logs'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Headphones className="w-4 h-4" />
+            <span>Call Activity & Audit Logs</span>
+            {callLogsSummary.total_calls > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-100 text-indigo-700">
+                {callLogsSummary.total_calls}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => { setActiveTab('leads'); loadLeads(pagination.page); }}
             className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'leads'
@@ -613,6 +743,432 @@ export default function AdminDashboard() {
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================
+            TAB: CALL ACTIVITY & AUDIT LOGS (All Agents Call Details)
+            ========================================================= */}
+        {activeTab === 'call-logs' && (
+          <div className="space-y-6">
+            {/* Header with Title & Quick Export */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-extrabold text-slate-900">
+                    Telecaller Call Activity & Audit Logs
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    {callLogsSummary.total_calls} Total Calls
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Comprehensive audit trail with timestamps, agent notes, call durations, and follow-up schedules.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={handleExportCallLogs}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition shadow-2xs"
+                  title="Download all filtered call records to Excel"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export Call Logs to Excel</span>
+                </button>
+
+                <button
+                  onClick={() => loadCallLogs(callLogsPagination.page)}
+                  disabled={callLogsLoading}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition shadow-2xs disabled:opacity-50"
+                  title="Refresh call activity"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${callLogsLoading ? 'animate-spin text-indigo-600' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Metric Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Total Calls</span>
+                  <PhoneForwarded className="w-4 h-4 text-slate-400" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 mt-1.5 font-mono">{callLogsSummary.total_calls}</p>
+                <span className="text-[11px] text-slate-500 block mt-0.5">Logged calls recorded</span>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Total Talk Time</span>
+                  <Clock className="w-4 h-4 text-slate-400" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 mt-1.5 font-mono">{formatTotalTime(callLogsSummary.total_duration_seconds)}</p>
+                <span className="text-[11px] text-slate-500 block mt-0.5">{callLogsSummary.total_duration_seconds}s total connect time</span>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Avg Call Duration</span>
+                  <TrendingUp className="w-4 h-4 text-indigo-500" />
+                </div>
+                <p className="text-2xl font-black text-indigo-600 mt-1.5 font-mono">{formatDuration(callLogsSummary.avg_duration_seconds)}</p>
+                <span className="text-[11px] text-slate-500 block mt-0.5">Per conversation</span>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
+                <div className="flex items-center justify-between text-emerald-700">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Interested Leads</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="flex items-baseline gap-2 mt-1.5">
+                  <p className="text-2xl font-black text-emerald-800 font-mono">{callLogsSummary.interested_count}</p>
+                  <span className="text-xs font-bold text-emerald-600 font-mono">({callLogsSummary.conversion_rate}%)</span>
+                </div>
+                <span className="text-[11px] text-emerald-700 block mt-0.5">High-intent prospects</span>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs col-span-2 sm:col-span-1">
+                <div className="flex items-center justify-between text-amber-700">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Follow-Ups Set</span>
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                </div>
+                <p className="text-2xl font-black text-amber-800 mt-1.5 font-mono">{callLogsSummary.callback_count}</p>
+                <span className="text-[11px] text-amber-700 block mt-0.5">Call back later requests</span>
+              </div>
+            </div>
+
+            {/* Telecaller Performance Comparison Bar */}
+            {agentBreakdown.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Telecaller Productivity Breakdown:
+                    </span>
+                    <span className="text-[11px] text-slate-500">Click caller to filter activity logs</span>
+                  </div>
+
+                  {callLogAgent !== 'all' && (
+                    <button
+                      onClick={() => setCallLogAgent('all')}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
+                    >
+                      <span>Clear caller filter (Show All)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {agentBreakdown.map((agent) => {
+                    const isSelected = callLogAgent === String(agent.agent_id);
+                    return (
+                      <div
+                        key={agent.agent_id}
+                        onClick={() => setCallLogAgent(isSelected ? 'all' : String(agent.agent_id))}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-500/20 shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 text-xs truncate">{agent.agent_name}</span>
+                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                            isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
+                          }`}>
+                            {agent.calls_count} calls
+                          </span>
+                        </div>
+
+                        <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                          <span>Talk: <strong className="text-slate-800">{formatTotalTime(agent.total_duration_seconds)}</strong></span>
+                          <span>Interested: <strong className="text-emerald-700">{agent.interested_count} ({agent.conversion_rate}%)</strong></span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Filter Toolbar */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-3">
+              <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+                {/* Search Bar */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by lead name, phone number, telecaller, or call notes..."
+                    value={callLogSearch}
+                    onChange={(e) => setCallLogSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && loadCallLogs(1)}
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Dropdowns */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={callLogAgent}
+                    onChange={(e) => setCallLogAgent(e.target.value)}
+                    className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="all">All Telecallers</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name} (@{a.username})</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={callLogDisposition}
+                    onChange={(e) => setCallLogDisposition(e.target.value)}
+                    className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="all">All Dispositions</option>
+                    <option value="Answered - Interested">Answered - Interested</option>
+                    <option value="Call Back Later">Call Back Later</option>
+                    <option value="Answered - Not Interested">Answered - Not Interested</option>
+                    <option value="No Answer / Busy">No Answer / Busy</option>
+                    <option value="Invalid / Wrong Number">Invalid / Wrong Number</option>
+                  </select>
+
+                  <button
+                    onClick={() => loadCallLogs(1)}
+                    className="px-3.5 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition shadow-2xs"
+                  >
+                    Filter
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Range Quick Selector */}
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100 overflow-x-auto text-xs">
+                <span className="text-slate-500 font-semibold text-[11px] shrink-0">Date Range:</span>
+                {[
+                  { id: 'all', label: 'All Time' },
+                  { id: 'today', label: 'Today' },
+                  { id: 'yesterday', label: 'Yesterday' },
+                  { id: 'week', label: 'Last 7 Days' },
+                  { id: 'month', label: 'Last 30 Days' },
+                ].map((range) => (
+                  <button
+                    key={range.id}
+                    onClick={() => setCallLogDateRange(range.id)}
+                    className={`px-3 py-1 rounded-lg font-medium transition text-xs whitespace-nowrap ${
+                      callLogDateRange === range.id
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Master Call Activity Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="px-3.5 py-3">Date & Time</th>
+                      <th className="px-3.5 py-3">Telecaller</th>
+                      <th className="px-3.5 py-3">Lead Contact</th>
+                      <th className="px-3.5 py-3">Call Disposition</th>
+                      <th className="px-3.5 py-3">Duration</th>
+                      <th className="px-3.5 py-3">Conversation Notes</th>
+                      <th className="px-3.5 py-3">Follow-Up</th>
+                      <th className="px-3.5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {callLogsLoading ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-slate-500">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-xs font-medium">Loading call activity records...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : callLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-slate-500">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <PhoneCall className="w-8 h-8 text-slate-300" />
+                            <p className="font-semibold text-slate-700">No call activity recorded matching these filters.</p>
+                            <p className="text-xs text-slate-400">Try selecting 'All Time' or clearing search terms.</p>
+                            <button
+                              onClick={() => {
+                                setCallLogSearch('');
+                                setCallLogAgent('all');
+                                setCallLogDisposition('all');
+                                setCallLogDateRange('all');
+                              }}
+                              className="mt-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-xs transition"
+                            >
+                              Reset All Filters
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      callLogs.map((log) => {
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50/80 transition group">
+                            {/* Timestamp */}
+                            <td className="px-3.5 py-3 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 text-slate-700 font-mono text-[11px]">
+                                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{log.called_at ? new Date(log.called_at).toLocaleString() : 'N/A'}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
+                                LOG #{log.id}
+                              </span>
+                            </td>
+
+                            {/* Telecaller */}
+                            <td className="px-3.5 py-3 whitespace-nowrap">
+                              <span className="font-bold text-slate-900 block">{log.agent_name || 'Agent'}</span>
+                              <span className="font-mono text-slate-400 text-[11px]">@{log.agent_username}</span>
+                            </td>
+
+                            {/* Lead Contact */}
+                            <td className="px-3.5 py-3 max-w-[200px]">
+                              <span className="font-bold text-slate-900 block truncate">{log.lead_name || 'Unknown Lead'}</span>
+                              <div className="flex items-center gap-1 text-[11px] font-mono text-slate-600 mt-0.5">
+                                <span>{log.phone_number}</span>
+                                {log.phone_number && (
+                                  <button
+                                    onClick={() => copyNumber(log.phone_number)}
+                                    className="p-0.5 rounded text-slate-400 hover:text-slate-700"
+                                    title="Copy number"
+                                  >
+                                    {copiedPhone === log.phone_number ? (
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                              {log.company_or_details && (
+                                <p className="text-[10px] text-slate-400 truncate mt-0.5" title={log.company_or_details}>
+                                  {log.company_or_details}
+                                </p>
+                              )}
+                            </td>
+
+                            {/* Disposition */}
+                            <td className="px-3.5 py-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                                log.disposition === 'Answered - Interested'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : log.disposition === 'Call Back Later'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : log.disposition === 'Answered - Not Interested'
+                                  ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                  : log.disposition === 'No Answer / Busy'
+                                  ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                  : 'bg-red-50 text-red-800 border-red-300'
+                              }`}>
+                                {log.disposition === 'Answered - Interested' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                                {log.disposition === 'Call Back Later' && <Calendar className="w-3 h-3 text-amber-600" />}
+                                <span>{log.disposition}</span>
+                              </span>
+                            </td>
+
+                            {/* Duration */}
+                            <td className="px-3.5 py-3 whitespace-nowrap font-mono font-medium text-slate-800">
+                              {formatDuration(log.duration_seconds)}
+                            </td>
+
+                            {/* Conversation Notes Preview */}
+                            <td className="px-3.5 py-3 max-w-[240px]">
+                              {log.notes ? (
+                                <p
+                                  onClick={() => setSelectedCallLog(log)}
+                                  className="text-slate-700 text-xs truncate cursor-pointer hover:text-indigo-600 leading-snug"
+                                  title={log.notes}
+                                >
+                                  {log.notes}
+                                </p>
+                              ) : (
+                                <span className="text-slate-400 italic text-[11px]">No notes</span>
+                              )}
+                            </td>
+
+                            {/* Follow-up date */}
+                            <td className="px-3.5 py-3 whitespace-nowrap">
+                              {log.follow_up_date ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-amber-50 text-amber-800 border border-amber-200">
+                                  <Calendar className="w-3 h-3 text-amber-600" />
+                                  {new Date(log.follow_up_date).toLocaleDateString()}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-3.5 py-3 text-right whitespace-nowrap">
+                              <button
+                                onClick={() => setSelectedCallLog(log)}
+                                className="px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+                                title="View full details and conversation notes"
+                              >
+                                View Log
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Bar */}
+              {callLogsPagination.totalPages > 1 && (
+                <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                  <div>
+                    Showing <strong>{((callLogsPagination.page - 1) * callLogsPagination.limit) + 1}</strong> to{' '}
+                    <strong>{Math.min(callLogsPagination.page * callLogsPagination.limit, callLogsPagination.total)}</strong> of{' '}
+                    <strong>{callLogsPagination.total}</strong> calls
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => loadCallLogs(callLogsPagination.page - 1)}
+                      disabled={callLogsPagination.page <= 1}
+                      className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Prev</span>
+                    </button>
+
+                    <span className="px-2 font-mono font-bold text-slate-800">
+                      {callLogsPagination.page} / {callLogsPagination.totalPages}
+                    </span>
+
+                    <button
+                      onClick={() => loadCallLogs(callLogsPagination.page + 1)}
+                      disabled={callLogsPagination.page >= callLogsPagination.totalPages}
+                      className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition flex items-center gap-1"
+                    >
+                      <span>Next</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1201,7 +1757,15 @@ export default function AdminDashboard() {
                             {a.avg_duration_seconds ? `${Math.floor(a.avg_duration_seconds / 60)}m ${a.avg_duration_seconds % 60}s` : '—'}
                           </td>
 
-                          <td className="px-3 py-3 text-right">
+                          <td className="px-3 py-3 text-right whitespace-nowrap space-x-2">
+                            <button
+                              onClick={() => handleViewAgentLogs(a.id)}
+                              className="text-[11px] font-semibold px-2.5 py-1 rounded-lg text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition inline-flex items-center gap-1"
+                              title="View this agent's call logs"
+                            >
+                              <History className="w-3 h-3" />
+                              <span>Call Logs</span>
+                            </button>
                             <button
                               onClick={() => handleToggleAgentStatus(a)}
                               className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${
@@ -1297,6 +1861,14 @@ export default function AdminDashboard() {
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
           onReset={handleResetLead}
+        />
+      )}
+
+      {/* Call Activity Audit Log Modal */}
+      {selectedCallLog && (
+        <CallLogModal
+          log={selectedCallLog}
+          onClose={() => setSelectedCallLog(null)}
         />
       )}
     </div>

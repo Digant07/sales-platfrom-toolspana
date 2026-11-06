@@ -549,6 +549,284 @@ router.patch('/agents/:id', async (req, res) => {
   }
 });
 
+// Helper for date range calculation
+function getDateRangeFilter(dateRange, customStart, customEnd) {
+  const now = new Date();
+  if (customStart || customEnd) {
+    return {
+      start: customStart ? new Date(customStart).toISOString() : null,
+      end: customEnd ? new Date(customEnd).toISOString() : null
+    };
+  }
+  if (dateRange === 'today') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    return { start: start.toISOString(), end: null };
+  } else if (dateRange === 'yesterday') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    return { start: start.toISOString(), end: end.toISOString() };
+  } else if (dateRange === 'week') {
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return { start: start.toISOString(), end: null };
+  } else if (dateRange === 'month') {
+    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { start: start.toISOString(), end: null };
+  }
+  return { start: null, end: null };
+}
+
+// ----------------------------------------------------
+// 7.5 CALL ACTIVITY & AUDIT LOGS (Agent Call Details & Analytics)
+// ----------------------------------------------------
+router.get('/call-logs', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(10, parseInt(req.query.limit, 10) || 25));
+    const offset = (page - 1) * limit;
+
+    const agentId = req.query.agent_id;
+    const disposition = req.query.disposition;
+    const dateRange = req.query.date_range || 'all';
+    const search = req.query.search ? req.query.search.trim() : '';
+
+    const dateFilter = getDateRangeFilter(dateRange, req.query.start_date, req.query.end_date);
+
+    let whereClauses = [];
+    let params = [];
+
+    if (agentId && agentId !== 'all') {
+      whereClauses.push('cl.agent_id = ?');
+      params.push(agentId);
+    }
+
+    if (disposition && disposition !== 'all') {
+      whereClauses.push('cl.disposition = ?');
+      params.push(disposition);
+    }
+
+    if (dateFilter.start) {
+      whereClauses.push('cl.called_at >= ?');
+      params.push(dateFilter.start);
+    }
+    if (dateFilter.end) {
+      whereClauses.push('cl.called_at < ?');
+      params.push(dateFilter.end);
+    }
+
+    if (search) {
+      whereClauses.push('(l.lead_name LIKE ? OR l.phone_number LIKE ? OR u.name LIKE ? OR u.username LIKE ? OR cl.notes LIKE ?)');
+      const wild = `%${search}%`;
+      params.push(wild, wild, wild, wild, wild);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    // 1. Get filtered summary metrics
+    const summarySql = `
+      SELECT 
+        COUNT(*) as total_calls,
+        COALESCE(SUM(cl.duration_seconds), 0) as total_duration_seconds,
+        COALESCE(AVG(CASE WHEN cl.duration_seconds > 0 THEN cl.duration_seconds ELSE NULL END), 0) as avg_duration_seconds,
+        SUM(CASE WHEN cl.disposition = 'Answered - Interested' THEN 1 ELSE 0 END) as interested_count,
+        SUM(CASE WHEN cl.disposition = 'Call Back Later' THEN 1 ELSE 0 END) as callback_count,
+        SUM(CASE WHEN cl.disposition = 'Answered - Not Interested' THEN 1 ELSE 0 END) as not_interested_count,
+        SUM(CASE WHEN cl.disposition IN ('No Answer / Busy', 'Invalid / Wrong Number') THEN 1 ELSE 0 END) as unreachable_count
+      FROM call_logs cl
+      LEFT JOIN leads l ON cl.lead_id = l.id
+      LEFT JOIN users u ON cl.agent_id = u.id
+      ${whereSql}
+    `;
+    const summaryRow = await db.get(summarySql, params);
+
+    const totalCalls = summaryRow?.total_calls || 0;
+    const interestedCount = summaryRow?.interested_count || 0;
+    const conversionRate = totalCalls > 0 ? Math.round((interestedCount / totalCalls) * 100) : 0;
+
+    // 2. Agent breakdown under current filters
+    const agentBreakdownSql = `
+      SELECT 
+        u.id as agent_id,
+        u.name as agent_name,
+        u.username as agent_username,
+        COUNT(cl.id) as calls_count,
+        COALESCE(SUM(cl.duration_seconds), 0) as total_duration_seconds,
+        COALESCE(AVG(CASE WHEN cl.duration_seconds > 0 THEN cl.duration_seconds ELSE NULL END), 0) as avg_duration_seconds,
+        SUM(CASE WHEN cl.disposition = 'Answered - Interested' THEN 1 ELSE 0 END) as interested_count,
+        SUM(CASE WHEN cl.disposition = 'Call Back Later' THEN 1 ELSE 0 END) as callback_count
+      FROM call_logs cl
+      LEFT JOIN users u ON cl.agent_id = u.id
+      LEFT JOIN leads l ON cl.lead_id = l.id
+      ${whereSql}
+      GROUP BY u.id, u.name, u.username
+      ORDER BY calls_count DESC, u.name ASC
+    `;
+    const agentBreakdownRows = await db.all(agentBreakdownSql, params);
+
+    // 3. Paginated call logs list
+    const logsSql = `
+      SELECT 
+        cl.id,
+        cl.lead_id,
+        cl.agent_id,
+        cl.disposition,
+        cl.notes,
+        cl.follow_up_date,
+        cl.called_at,
+        cl.duration_seconds,
+        u.name as agent_name,
+        u.username as agent_username,
+        u.phone as agent_phone,
+        l.lead_id_code,
+        l.lead_name,
+        l.phone_number,
+        l.alternate_phone,
+        l.company_or_details,
+        l.status as lead_current_status
+      FROM call_logs cl
+      LEFT JOIN users u ON cl.agent_id = u.id
+      LEFT JOIN leads l ON cl.lead_id = l.id
+      ${whereSql}
+      ORDER BY cl.called_at DESC, cl.id DESC
+      LIMIT ? OFFSET ?
+    `;
+    const logs = await db.all(logsSql, [...params, limit, offset]);
+
+    return res.json({
+      call_logs: logs,
+      pagination: {
+        page,
+        limit,
+        total: totalCalls,
+        totalPages: Math.ceil(totalCalls / limit) || 1,
+      },
+      summary: {
+        total_calls: totalCalls,
+        total_duration_seconds: summaryRow?.total_duration_seconds || 0,
+        avg_duration_seconds: Math.round(summaryRow?.avg_duration_seconds || 0),
+        interested_count: interestedCount,
+        callback_count: summaryRow?.callback_count || 0,
+        not_interested_count: summaryRow?.not_interested_count || 0,
+        unreachable_count: summaryRow?.unreachable_count || 0,
+        conversion_rate: conversionRate,
+      },
+      agent_breakdown: agentBreakdownRows.map(a => ({
+        ...a,
+        avg_duration_seconds: Math.round(a.avg_duration_seconds || 0),
+        conversion_rate: a.calls_count > 0 ? Math.round((a.interested_count / a.calls_count) * 100) : 0,
+      })),
+    });
+  } catch (err) {
+    console.error('Call logs error:', err);
+    return res.status(500).json({ error: 'Failed to fetch call logs: ' + err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 7.6 EXPORT CALL AUDIT LOGS TO EXCEL (.xlsx)
+// ----------------------------------------------------
+router.get('/call-logs/export', async (req, res) => {
+  try {
+    const agentId = req.query.agent_id;
+    const disposition = req.query.disposition;
+    const dateRange = req.query.date_range || 'all';
+    const search = req.query.search ? req.query.search.trim() : '';
+
+    const dateFilter = getDateRangeFilter(dateRange, req.query.start_date, req.query.end_date);
+
+    let whereClauses = [];
+    let params = [];
+
+    if (agentId && agentId !== 'all') {
+      whereClauses.push('cl.agent_id = ?');
+      params.push(agentId);
+    }
+
+    if (disposition && disposition !== 'all') {
+      whereClauses.push('cl.disposition = ?');
+      params.push(disposition);
+    }
+
+    if (dateFilter.start) {
+      whereClauses.push('cl.called_at >= ?');
+      params.push(dateFilter.start);
+    }
+    if (dateFilter.end) {
+      whereClauses.push('cl.called_at < ?');
+      params.push(dateFilter.end);
+    }
+
+    if (search) {
+      whereClauses.push('(l.lead_name LIKE ? OR l.phone_number LIKE ? OR u.name LIKE ? OR u.username LIKE ? OR cl.notes LIKE ?)');
+      const wild = `%${search}%`;
+      params.push(wild, wild, wild, wild, wild);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const logsSql = `
+      SELECT 
+        cl.id,
+        cl.lead_id,
+        cl.agent_id,
+        cl.disposition,
+        cl.notes,
+        cl.follow_up_date,
+        cl.called_at,
+        cl.duration_seconds,
+        u.name as agent_name,
+        u.username as agent_username,
+        l.lead_id_code,
+        l.lead_name,
+        l.phone_number,
+        l.alternate_phone,
+        l.company_or_details
+      FROM call_logs cl
+      LEFT JOIN users u ON cl.agent_id = u.id
+      LEFT JOIN leads l ON cl.lead_id = l.id
+      ${whereSql}
+      ORDER BY cl.called_at DESC, cl.id DESC
+    `;
+    const logs = await db.all(logsSql, params);
+
+    const exportRows = logs.map(l => {
+      const durationSec = l.duration_seconds || 0;
+      const m = Math.floor(durationSec / 60);
+      const s = durationSec % 60;
+      const formattedDuration = `${m}m ${s < 10 ? '0' : ''}${s}s`;
+
+      return {
+        'Log ID': `CALL-${l.id}`,
+        'Called Date & Time': l.called_at ? new Date(l.called_at).toLocaleString() : '',
+        'Agent Name': l.agent_name || 'Unknown',
+        'Agent Username': l.agent_username || '',
+        'Lead Code': l.lead_id_code || `LEAD-${l.lead_id}`,
+        'Lead Name': l.lead_name || 'N/A',
+        'Contact Number': l.phone_number || '',
+        'Alternate Contact': l.alternate_phone || '',
+        'Key Details / Town': l.company_or_details || '',
+        'Call Disposition': l.disposition || '',
+        'Call Duration': formattedDuration,
+        'Duration (Seconds)': durationSec,
+        'Agent Notes': l.notes || '',
+        'Follow-Up Scheduled': l.follow_up_date ? new Date(l.follow_up_date).toLocaleString() : 'None',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Call Audit Logs');
+
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    const dateStr = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Disposition', `attachment; filename="Agent_Call_Logs_Audit_${dateStr}.xlsx"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buffer);
+  } catch (err) {
+    console.error('Call logs export error:', err);
+    return res.status(500).json({ error: 'Failed to export call logs: ' + err.message });
+  }
+});
+
 // ----------------------------------------------------
 // 8. ONE-CLICK EXCEL EXPORT
 // ----------------------------------------------------

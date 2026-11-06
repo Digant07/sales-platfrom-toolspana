@@ -107,6 +107,29 @@ export const api = {
 
     seedSampleLeads: () => request('/admin/leads/seed-sample', { method: 'POST' }),
 
+    // Call Activity & Audit Logs
+    getCallLogs: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request(`/admin/call-logs?${q}`);
+    },
+    downloadCallLogsExport: async (params = {}) => {
+      const token = getToken();
+      const q = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/admin/call-logs/export?${q}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to download call logs export');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Agent_Call_Logs_Audit_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    },
+
     getExportUrl: () => {
       const token = getToken();
       return `/api/admin/leads/export?token=${encodeURIComponent(token || '')}`;

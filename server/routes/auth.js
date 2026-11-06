@@ -5,8 +5,11 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
-// GET /api/auth/login (Health & status check if visited in browser)
+// GET /api/auth/login (Health & status check, redirects browsers to frontend login)
 router.get('/login', (req, res) => {
+  if (req.accepts('html')) {
+    return res.redirect('/');
+  }
   res.json({
     status: 'ok',
     service: 'Auth Service',
