@@ -286,13 +286,16 @@ router.get('/leads', async (req, res) => {
         l.status,
         l.assigned_agent_id,
         u.name as assigned_agent_name,
+        u.username as assigned_agent_username,
         l.call_disposition,
         l.agent_notes,
         l.follow_up_date,
         l.locked_at,
         l.called_at,
         l.call_duration_seconds,
-        l.created_at
+        l.created_at,
+        (SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = l.id) as total_call_attempts,
+        (SELECT COALESCE(SUM(cl.duration_seconds), 0) FROM call_logs cl WHERE cl.lead_id = l.id) as total_talk_time_seconds
       FROM leads l
       LEFT JOIN users u ON l.assigned_agent_id = u.id
       ${whereSql}
@@ -329,6 +332,138 @@ router.get('/leads', async (req, res) => {
   } catch (err) {
     console.error('Master leads table error:', err);
     return res.status(500).json({ error: 'Failed to fetch leads.' });
+  }
+});
+
+// ----------------------------------------------------
+// 4.5 LEAD DOSSIER & AGENT WORK TIMELINE
+// ----------------------------------------------------
+router.get('/leads/:id/activity', async (req, res) => {
+  try {
+    const leadId = req.params.id;
+
+    // 1. Fetch Lead Details
+    const lead = await db.get(`
+      SELECT 
+        l.*,
+        u.name as assigned_agent_name,
+        u.username as assigned_agent_username,
+        u.phone as assigned_agent_phone
+      FROM leads l
+      LEFT JOIN users u ON l.assigned_agent_id = u.id
+      WHERE l.id = ?
+    `, [leadId]);
+
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found.' });
+    }
+
+    let extraData = null;
+    if (lead.extra_data) {
+      try {
+        extraData = JSON.parse(lead.extra_data);
+      } catch (e) {
+        extraData = lead.extra_data;
+      }
+    }
+
+    // 2. Fetch all call logs for this lead in chronological order
+    const callLogs = await db.all(`
+      SELECT 
+        cl.id,
+        cl.lead_id,
+        cl.agent_id,
+        cl.disposition,
+        cl.notes,
+        cl.follow_up_date,
+        cl.called_at,
+        cl.duration_seconds,
+        u.name as agent_name,
+        u.username as agent_username,
+        u.phone as agent_phone
+      FROM call_logs cl
+      LEFT JOIN users u ON cl.agent_id = u.id
+      WHERE cl.lead_id = ?
+      ORDER BY cl.called_at DESC, cl.id DESC
+    `, [leadId]);
+
+    // 3. Compute stats
+    const totalCalls = callLogs.length;
+    const totalTalkSeconds = callLogs.reduce((acc, c) => acc + (c.duration_seconds || 0), 0);
+    const uniqueAgentIds = new Set(callLogs.map(c => c.agent_id));
+
+    // 4. Build chronological timeline of events
+    const timeline = [];
+
+    // Created event
+    if (lead.created_at) {
+      timeline.push({
+        type: 'created',
+        title: 'Lead Imported to Queue',
+        description: `Lead added to sequential queue with status: ${lead.status}`,
+        timestamp: lead.created_at,
+        badge: 'Queue Entry'
+      });
+    }
+
+    // Call logs events (earliest to latest in timeline order)
+    const sortedAsc = [...callLogs].reverse();
+    sortedAsc.forEach((log, index) => {
+      timeline.push({
+        type: 'call',
+        title: `Call Attempt #${index + 1}: ${log.disposition}`,
+        agent_name: log.agent_name,
+        agent_username: log.agent_username,
+        disposition: log.disposition,
+        duration_seconds: log.duration_seconds,
+        notes: log.notes,
+        follow_up_date: log.follow_up_date,
+        timestamp: log.called_at,
+        badge: `Attempt #${index + 1}`
+      });
+
+      if (log.follow_up_date) {
+        timeline.push({
+          type: 'follow_up',
+          title: `Callback Scheduled`,
+          description: `Scheduled by ${log.agent_name} for ${new Date(log.follow_up_date).toLocaleString()}`,
+          timestamp: log.called_at,
+          scheduled_for: log.follow_up_date,
+          badge: 'Follow-Up'
+        });
+      }
+    });
+
+    // If currently locked in progress
+    if (lead.status === 'Locked_In_Progress') {
+      timeline.push({
+        type: 'locked',
+        title: `Active Call In Progress`,
+        description: `Currently locked by telecaller ${lead.assigned_agent_name || 'Agent'}`,
+        timestamp: lead.locked_at || new Date().toISOString(),
+        agent_name: lead.assigned_agent_name,
+        badge: 'Live Session'
+      });
+    }
+
+    return res.json({
+      lead: {
+        ...lead,
+        extra_data: extraData
+      },
+      call_logs: callLogs,
+      stats: {
+        total_calls: totalCalls,
+        total_talk_time_seconds: totalTalkSeconds,
+        unique_agents_count: uniqueAgentIds.size,
+        first_called_at: sortedAsc[0]?.called_at || null,
+        latest_called_at: callLogs[0]?.called_at || null,
+      },
+      timeline: timeline.reverse() // latest first
+    });
+  } catch (err) {
+    console.error('Lead activity error:', err);
+    return res.status(500).json({ error: 'Failed to fetch lead activity: ' + err.message });
   }
 });
 

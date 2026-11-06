@@ -73,6 +73,7 @@ export const api = {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/leads?${q}`);
     },
+    getLeadActivity: (id) => request(`/admin/leads/${id}/activity`),
     resetLead: (id) => request(`/admin/leads/${id}/reset`, { method: 'POST' }),
     deleteLead: (id) => request(`/admin/leads/${id}`, { method: 'DELETE' }),
     clearQueue: () => request('/admin/leads/clear-queue', { method: 'POST' }),

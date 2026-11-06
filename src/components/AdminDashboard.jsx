@@ -1042,7 +1042,21 @@ export default function AdminDashboard() {
 
                             {/* Lead Contact */}
                             <td className="px-3.5 py-3 max-w-[200px]">
-                              <span className="font-bold text-slate-900 block truncate">{log.lead_name || 'Unknown Lead'}</span>
+                              <span
+                                className="font-bold text-slate-900 block truncate cursor-pointer hover:text-indigo-600 transition"
+                                onClick={() => setSelectedLead({
+                                  id: log.lead_id,
+                                  lead_name: log.lead_name,
+                                  phone_number: log.phone_number,
+                                  alternate_phone: log.alternate_phone,
+                                  company_or_details: log.company_or_details,
+                                  lead_id_code: log.lead_id_code,
+                                  status: log.lead_current_status || 'Completed'
+                                })}
+                                title="Click to view full lead work dossier & activity timeline"
+                              >
+                                {log.lead_name || 'Unknown Lead'}
+                              </span>
                               <div className="flex items-center gap-1 text-[11px] font-mono text-slate-600 mt-0.5">
                                 <span>{log.phone_number}</span>
                                 {log.phone_number && (
@@ -1249,7 +1263,7 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3">Details / Location</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Assigned Caller</th>
-                      <th className="px-4 py-3">Call Outcome</th>
+                      <th className="px-4 py-3">Agent Work & Activity</th>
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1305,27 +1319,52 @@ export default function AdminDashboard() {
                           </td>
 
                           <td className="px-4 py-3.5 max-w-xs">
-                            {l.call_disposition ? (
-                              <div>
-                                <span className="font-semibold text-slate-900 block">{l.call_disposition}</span>
-                                {l.agent_notes && (
-                                  <span className="text-slate-500 text-[11px] line-clamp-1 italic">
-                                    "{l.agent_notes}"
+                            {l.status === 'Locked_In_Progress' ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                                In Call with {l.assigned_agent_name || 'Agent'}
+                              </span>
+                            ) : l.call_disposition ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    l.call_disposition === 'Answered - Interested'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      : l.call_disposition === 'Call Back Later'
+                                      ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                      : l.call_disposition === 'Answered - Not Interested'
+                                      ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                      : 'bg-slate-100 text-slate-700 border-slate-300'
+                                  }`}>
+                                    {l.call_disposition}
                                   </span>
+                                  <span className="font-mono text-[10px] text-slate-500">
+                                    {formatDuration(l.call_duration_seconds)}
+                                  </span>
+                                </div>
+                                {l.agent_notes && (
+                                  <p
+                                    className="text-slate-600 text-[11px] line-clamp-1 italic cursor-pointer hover:text-indigo-600"
+                                    onClick={() => setSelectedLead(l)}
+                                    title={l.agent_notes}
+                                  >
+                                    "{l.agent_notes}"
+                                  </p>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-slate-400">—</span>
+                              <span className="text-slate-400 italic text-[11px]">Uncontacted in Queue</span>
                             )}
                           </td>
 
                           <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
                             <button
                               onClick={() => setSelectedLead(l)}
-                              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                              title="View Full Details"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition"
+                              title="Inspect complete agent work history and conversation audit"
                             >
-                              <Eye className="w-4 h-4" />
+                              <History className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Work History</span>
                             </button>
 
                             {l.status !== 'Pending' && (
