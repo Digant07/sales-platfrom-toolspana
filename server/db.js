@@ -10,14 +10,16 @@ const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKE
 const isTurso = Boolean(url && authToken);
 
 let db;
+let client = null;
+let rawDb = null;
 let initPromise = null;
 
 if (isTurso) {
-  const { createClient } = require('@libsql/client');
+  const { createClient } = require('@libsql/client/web');
 
   console.log('⚡ Connecting to Turso Cloud SQLite:', url);
 
-  const client = createClient({
+  client = createClient({
     url,
     authToken,
   });
@@ -95,7 +97,7 @@ if (isTurso) {
   const sqlite3 = require('sqlite3').verbose();
   const dbPath = path.resolve(__dirname, 'crm.db');
 
-  const rawDb = new sqlite3.Database(dbPath, (err) => {
+  rawDb = new sqlite3.Database(dbPath, (err) => {
     if (err) {
       console.error('Failed to open local database:', err);
     } else {
@@ -195,27 +197,49 @@ async function createSchema() {
     `CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status)`,
     `CREATE INDEX IF NOT EXISTS idx_leads_assigned_agent ON leads(assigned_agent_id)`,
     `CREATE INDEX IF NOT EXISTS idx_leads_called_at ON leads(called_at)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_unique_phone ON leads(phone_number)`,
     `CREATE INDEX IF NOT EXISTS idx_call_logs_agent ON call_logs(agent_id)`,
     `CREATE INDEX IF NOT EXISTS idx_call_logs_called_at ON call_logs(called_at)`,
   ];
 
-  for (const stmt of schemaStatements) {
-    if (isTurso) {
-      await db.client.execute(stmt);
+  if (isTurso) {
+    if (typeof client.batch === 'function') {
+      await client.batch(schemaStatements.map((stmt) => ({ sql: stmt, args: [] })));
     } else {
+      for (const stmt of schemaStatements) {
+        await client.execute(stmt);
+      }
+    }
+  } else {
+    for (const stmt of schemaStatements) {
       await db.exec(stmt);
     }
   }
 }
 
-function ensureInit() {
+let isInitialized = false;
+
+async function ensureInit() {
+  if (isInitialized) return;
   if (!initPromise) {
-    initPromise = createSchema();
+    initPromise = (async () => {
+      try {
+        if (isTurso) {
+          await client.execute('SELECT 1 FROM users LIMIT 1');
+        } else {
+          await new Promise((resolve, reject) => {
+            rawDb.get('SELECT 1 FROM users LIMIT 1', (err) => (err ? reject(err) : resolve()));
+          });
+        }
+        isInitialized = true;
+      } catch (checkErr) {
+        // Table does not exist, run full schema setup
+        await createSchema();
+        isInitialized = true;
+      }
+    })();
   }
   return initPromise;
 }
-
-// Start schema initialization immediately
-ensureInit().catch(console.error);
 
 module.exports = db;

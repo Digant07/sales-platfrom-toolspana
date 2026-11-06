@@ -317,6 +317,25 @@ export default function AdminDashboard() {
     }
   };
 
+  const [deduping, setDeduping] = useState(false);
+
+  // Handle System-Wide Lead Deduplication
+  const handleDeduplicateQueue = async () => {
+    try {
+      setDeduping(true);
+      setErrorMsg('');
+      setSuccessMsg('Scanning entire queue for duplicate phone numbers...');
+      const res = await api.admin.deduplicateLeads();
+      setSuccessMsg(res.message);
+      loadLeads(1);
+      loadAnalytics();
+    } catch (err) {
+      setErrorMsg('Deduplication failed: ' + err.message);
+    } finally {
+      setDeduping(false);
+    }
+  };
+
   // One-Click Excel Export
   const handleExportExcel = async () => {
     try {
@@ -1275,6 +1294,16 @@ export default function AdminDashboard() {
                 </button>
 
                 <button
+                  onClick={handleDeduplicateQueue}
+                  disabled={deduping}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                  title="Scan entire lead queue and safely merge duplicate phone numbers"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{deduping ? 'Deduplicating...' : 'Deduplicate Queue'}</span>
+                </button>
+
+                <button
                   onClick={handleClearQueue}
                   className="text-xs text-rose-600 hover:text-rose-700 font-semibold px-2.5 py-2 rounded-xl hover:bg-rose-50 border border-transparent hover:border-rose-200 transition"
                   title="Clear uncalled leads from queue"
@@ -1503,6 +1532,26 @@ export default function AdminDashboard() {
                     </span>
                   </div>
 
+                  {/* Deduplication Intelligence Banner */}
+                  {previewData.dedupStats && (
+                    <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-start gap-2.5">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold text-slate-900">Zero-Duplication Guaranteed</p>
+                          <p className="text-slate-500 text-[11px] leading-relaxed">
+                            {previewData.dedupStats.uniquePhoneCount} unique contacts found.
+                            {previewData.dedupStats.intraFileDuplicates > 0 && ` ${previewData.dedupStats.intraFileDuplicates} duplicates within the file will be skipped.`}
+                            {previewData.dedupStats.existingInDbCount > 0 && ` ${previewData.dedupStats.existingInDbCount} numbers already in DB will be skipped.`}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 text-xs shrink-0">
+                        +{previewData.dedupStats.newUniqueLeads} New Unique Leads
+                      </span>
+                    </div>
+                  )}
+
                   {/* Column Mapper Dropdowns */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
                     <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800">
@@ -1669,6 +1718,13 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 mb-5 flex items-center gap-2.5 text-xs text-slate-700">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>Zero-Duplication Guaranteed:</strong> Phone numbers are normalized and checked in real-time. Creating a duplicate lead with an existing number is strictly prevented.
+                </span>
+              </div>
+
               <form onSubmit={handleManualLeadSubmit} className="space-y-4 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -1680,7 +1736,7 @@ export default function AdminDashboard() {
                     value={manualLead.lead_name}
                     onChange={(e) => setManualLead({ ...manualLead, lead_name: e.target.value })}
                     placeholder="e.g. Balaji Hardware & Tools"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:bg-white focus:ring-1 focus:ring-slate-900 focus:outline-none"
                   />
                 </div>
 
@@ -1695,8 +1751,11 @@ export default function AdminDashboard() {
                       value={manualLead.phone_number}
                       onChange={(e) => setManualLead({ ...manualLead, phone_number: e.target.value })}
                       placeholder="e.g. +91 9829012345"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-mono focus:bg-white focus:ring-1 focus:ring-slate-900 focus:outline-none"
                     />
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      Standard mobile number. Checked against master queue to prevent duplicate dialing.
+                    </p>
                   </div>
 
                   <div>
@@ -1708,7 +1767,7 @@ export default function AdminDashboard() {
                       value={manualLead.alternate_phone}
                       onChange={(e) => setManualLead({ ...manualLead, alternate_phone: e.target.value })}
                       placeholder="e.g. +91 9414056789"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-mono focus:bg-white focus:ring-1 focus:ring-slate-900 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1722,7 +1781,7 @@ export default function AdminDashboard() {
                     value={manualLead.lead_id_code}
                     onChange={(e) => setManualLead({ ...manualLead, lead_id_code: e.target.value })}
                     placeholder="e.g. PT-NUM-030"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-mono focus:bg-white focus:ring-1 focus:ring-slate-900 focus:outline-none"
                   />
                 </div>
 
@@ -1735,7 +1794,7 @@ export default function AdminDashboard() {
                     value={manualLead.company_or_details}
                     onChange={(e) => setManualLead({ ...manualLead, company_or_details: e.target.value })}
                     placeholder="e.g. Jodhpur Road, Pali | In demand: Angle Grinders & Diamond Discs. Pitch 15-day rolling credit."
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 focus:bg-white focus:ring-1 focus:ring-slate-900 focus:outline-none"
                   />
                 </div>
 
@@ -1743,7 +1802,7 @@ export default function AdminDashboard() {
                   <button
                     type="submit"
                     disabled={manualSubmitting}
-                    className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
+                    className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-900 active:scale-[0.99] text-white font-bold rounded-xl shadow-xs transition disabled:opacity-50"
                   >
                     {manualSubmitting ? 'Adding Lead...' : 'Add Lead to Sequential Queue'}
                   </button>

@@ -24,18 +24,41 @@ const upload = multer({
 router.use(authenticateToken);
 router.use(requireAdmin);
 
-// Helper function to clean and sanitize phone numbers
-function sanitizePhone(raw) {
+// Canonical E.164 phone normalization function:
+// Strips punctuation, removes trunk 0, strips un-prefixed 91, and formats standard mobile to +91XXXXXXXXXX
+function normalizePhoneNumber(raw) {
   if (!raw) return '';
   const str = String(raw).trim();
-  const cleaned = str.replace(/[^\d+]/g, '');
-  return cleaned;
+  let digits = str.replace(/[^\d]/g, '');
+  if (!digits) return '';
+
+  // Remove leading 0 for 11-digit numbers (STD/trunk prefix)
+  if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+
+  // Remove 91 country code prefix without + (e.g. 919649192370 -> 9649192370)
+  if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.slice(2);
+  }
+
+  // Standard Indian 10-digit mobile
+  if (digits.length === 10) {
+    return '+91' + digits;
+  }
+
+  return '+' + digits;
+}
+
+// Alias for backward compatibility
+function sanitizePhone(raw) {
+  return normalizePhoneNumber(raw);
 }
 
 // ----------------------------------------------------
 // 1. FILE PREVIEW & COLUMN MAPPING (EXCEL / CSV)
 // ----------------------------------------------------
-router.post('/leads/preview-file', upload.single('file'), (req, res) => {
+router.post('/leads/preview-file', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Please upload an Excel (.xlsx/.xls) or CSV file.' });
@@ -83,6 +106,36 @@ router.post('/leads/preview-file', upload.single('file'), (req, res) => {
       }
     });
 
+    // Deduplication Intelligence: scan file and database
+    let uniquePhoneCount = 0;
+    let intraFileDuplicates = 0;
+    let existingInDbCount = 0;
+
+    const phoneCol = suggestedMapping.phone_number;
+    if (phoneCol) {
+      const filePhoneSet = new Set();
+      const existingDbRows = await db.all('SELECT phone_number FROM leads');
+      const dbPhoneSet = new Set(existingDbRows.map(r => r.phone_number));
+
+      rawRows.forEach((r) => {
+        const rawP = r[phoneCol];
+        if (rawP) {
+          const norm = normalizePhoneNumber(rawP);
+          if (norm && norm.length >= 6) {
+            if (filePhoneSet.has(norm)) {
+              intraFileDuplicates++;
+            } else {
+              filePhoneSet.add(norm);
+              if (dbPhoneSet.has(norm)) {
+                existingInDbCount++;
+              }
+            }
+          }
+        }
+      });
+      uniquePhoneCount = filePhoneSet.size;
+    }
+
     return res.json({
       sheetName: firstSheetName,
       totalRows: rawRows.length,
@@ -90,6 +143,13 @@ router.post('/leads/preview-file', upload.single('file'), (req, res) => {
       previewRows,
       suggestedMapping,
       allRows: rawRows,
+      dedupStats: {
+        totalRows: rawRows.length,
+        uniquePhoneCount,
+        intraFileDuplicates,
+        existingInDbCount,
+        newUniqueLeads: Math.max(0, uniquePhoneCount - existingInDbCount),
+      }
     });
   } catch (err) {
     console.error('File preview error:', err);
@@ -98,7 +158,7 @@ router.post('/leads/preview-file', upload.single('file'), (req, res) => {
 });
 
 // ----------------------------------------------------
-// 2. BULK IMPORT LEADS
+// 2. BULK IMPORT LEADS (Strict Deduplication Enforced)
 // ----------------------------------------------------
 router.post('/leads/import', async (req, res) => {
   try {
@@ -112,22 +172,35 @@ router.post('/leads/import', async (req, res) => {
       return res.status(400).json({ error: 'Please map at least Lead Name and Phone Number columns.' });
     }
 
+    // Fetch existing phone numbers in database to guarantee zero duplication
+    const existingDbRows = await db.all('SELECT phone_number FROM leads');
+    const existingPhones = new Set(existingDbRows.map(r => r.phone_number));
+    const processedBatchPhones = new Set();
+
     let insertedCount = 0;
-    let skippedCount = 0;
+    let skippedInvalidCount = 0;
+    let skippedDuplicateCount = 0;
 
     await db.transaction(async (txDb) => {
       const runner = txDb || db;
       for (const row of rows) {
         const leadName = String(row[mapping.lead_name] || '').trim();
         const rawPhone = String(row[mapping.phone_number] || '').trim();
-        const cleanPhone = sanitizePhone(rawPhone);
+        const cleanPhone = normalizePhoneNumber(rawPhone);
 
-        if (!leadName || !cleanPhone) {
-          skippedCount++;
+        // Validation: must have name and valid normalized phone
+        if (!leadName || !cleanPhone || cleanPhone.length < 6) {
+          skippedInvalidCount++;
           continue;
         }
 
-        const altPhone = mapping.alternate_phone ? sanitizePhone(row[mapping.alternate_phone]) : null;
+        // Strict Deduplication: skip if phone exists in DB or was already inserted in this import batch
+        if (existingPhones.has(cleanPhone) || processedBatchPhones.has(cleanPhone)) {
+          skippedDuplicateCount++;
+          continue;
+        }
+
+        const altPhone = mapping.alternate_phone ? normalizePhoneNumber(row[mapping.alternate_phone]) : null;
         const leadIdCode = mapping.lead_id_code ? String(row[mapping.lead_id_code] || '').trim() : null;
 
         let companyOrDetails = '';
@@ -163,15 +236,23 @@ router.post('/leads/import', async (req, res) => {
           JSON.stringify(extraDataObj)
         ]);
 
+        existingPhones.add(cleanPhone);
+        processedBatchPhones.add(cleanPhone);
         insertedCount++;
       }
     });
 
+    let message = `Successfully imported ${insertedCount} new unique leads into the dialer queue.`;
+    if (skippedDuplicateCount > 0) {
+      message += ` Filtered and skipped ${skippedDuplicateCount} duplicate contact numbers to prevent double dialing.`;
+    }
+
     return res.json({
       success: true,
-      message: `Successfully imported ${insertedCount} leads into the dialer queue.`,
+      message,
       insertedCount,
-      skippedCount,
+      skippedDuplicateCount,
+      skippedInvalidCount,
     });
   } catch (err) {
     console.error('Import error:', err);
@@ -180,7 +261,7 @@ router.post('/leads/import', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 3. MANUAL LEAD ENTRY (Admin requirement)
+// 3. MANUAL LEAD ENTRY (With Strict Duplicate Check)
 // ----------------------------------------------------
 router.post('/leads/manual', async (req, res) => {
   try {
@@ -197,12 +278,26 @@ router.post('/leads/manual', async (req, res) => {
       return res.status(400).json({ error: 'Lead name is required.' });
     }
 
-    const cleanPhone = sanitizePhone(phone_number);
-    if (!cleanPhone || cleanPhone.length < 5) {
-      return res.status(400).json({ error: 'A valid phone number is required.' });
+    const cleanPhone = normalizePhoneNumber(phone_number);
+    if (!cleanPhone || cleanPhone.length < 6) {
+      return res.status(400).json({ error: 'A valid phone number (minimum 6 digits) is required.' });
     }
 
-    const cleanAltPhone = alternate_phone ? sanitizePhone(alternate_phone) : null;
+    // Strict duplicate check against existing leads in the system
+    const existing = await db.get(`
+      SELECT id, lead_name, phone_number, status, lead_id_code
+      FROM leads
+      WHERE phone_number = ?
+    `, [cleanPhone]);
+
+    if (existing) {
+      const code = existing.lead_id_code || `LEAD-${existing.id}`;
+      return res.status(409).json({
+        error: `Duplicate Contact Blocked: A lead with phone number ${cleanPhone} already exists in the system (Lead #${code}: '${existing.lead_name}', Status: ${existing.status}). Duplicate leads are not allowed.`
+      });
+    }
+
+    const cleanAltPhone = alternate_phone ? normalizePhoneNumber(alternate_phone) : null;
     const extraDataStr = extra_fields && typeof extra_fields === 'object' ? JSON.stringify(extra_fields) : null;
 
     const result = await db.run(`
@@ -228,10 +323,13 @@ router.post('/leads/manual', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Lead created successfully and placed in sequential queue.',
+      message: `Lead '${lead_name.trim()}' (${cleanPhone}) created successfully and placed in sequential queue.`,
       leadId: result.lastID,
     });
   } catch (err) {
+    if (err.message && err.message.includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'A lead with this phone number already exists in the system.' });
+    }
     console.error('Manual lead error:', err);
     return res.status(500).json({ error: 'Failed to create lead manually: ' + err.message });
   }
@@ -1121,10 +1219,23 @@ router.post('/leads/seed-sample', async (req, res) => {
       { idCode: 'PT-NUM-029', name: 'Kumawat Hardware', phone: '+91 7891354673', alt: '', town: 'Phalodi', dist: 'Phalodi', owner: 'Kumawat Ji', products: 'Rotary Hammers, Grinder Discs, Hand Tools, Cutting Blades', pitch: 'Provide monthly WhatsApp catalog replenishment with Jodhpur transport bilty dispatch.' },
     ];
 
+    // Fetch existing phone numbers to prevent duplicating sample records
+    const existingDbRows = await db.all('SELECT phone_number FROM leads');
+    const existingPhones = new Set(existingDbRows.map(r => r.phone_number));
+
     let count = 0;
+    let skippedDups = 0;
+
     await db.transaction(async (txDb) => {
       const runner = txDb || db;
       for (const item of sampleLeads) {
+        const cleanPhone = normalizePhoneNumber(item.phone);
+
+        if (existingPhones.has(cleanPhone)) {
+          skippedDups++;
+          continue;
+        }
+
         const extraObj = {
           'Town / Cluster': item.town,
           'District': item.dist,
@@ -1147,24 +1258,115 @@ router.post('/leads/seed-sample', async (req, res) => {
         `, [
           item.idCode,
           item.name,
-          sanitizePhone(item.phone),
+          cleanPhone,
           item.phone,
-          sanitizePhone(item.alt),
+          normalizePhoneNumber(item.alt),
           `${item.town}, ${item.dist} | Products: ${item.products}`,
           JSON.stringify(extraObj)
         ]);
+
+        existingPhones.add(cleanPhone);
         count++;
+      }
+    });
+
+    let msg = `Seeded ${count} realistic Rajasthan industrial power tool leads into dialer queue.`;
+    if (skippedDups > 0) {
+      msg += ` (${skippedDups} already existed and were skipped to prevent duplication).`;
+    }
+
+    return res.json({
+      success: true,
+      message: msg,
+      count,
+      skippedDups,
+    });
+  } catch (err) {
+    console.error('Seed error:', err);
+    return res.status(500).json({ error: 'Failed to seed sample leads: ' + err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 10. SYSTEM-WIDE DEDUPLICATION SWEEP & RECOVERY
+// ----------------------------------------------------
+router.post('/leads/deduplicate', async (req, res) => {
+  try {
+    const allLeads = await db.all('SELECT id, lead_name, phone_number, raw_phone, status, call_disposition, called_at, created_at FROM leads ORDER BY id ASC');
+
+    const groups = {};
+    for (const l of allLeads) {
+      const norm = normalizePhoneNumber(l.phone_number || l.raw_phone);
+      if (!norm) continue;
+      if (!groups[norm]) groups[norm] = [];
+      groups[norm].push(l);
+    }
+
+    let mergedGroups = 0;
+    let deletedCount = 0;
+
+    await db.transaction(async (txDb) => {
+      const runner = txDb || db;
+
+      for (const [phone, list] of Object.entries(groups)) {
+        if (list.length <= 1) continue;
+        mergedGroups++;
+
+        // Pick primary keeper:
+        // Priority 1: Has call disposition / called_at
+        // Priority 2: Status != 'Pending'
+        // Priority 3: Lowest ID
+        list.sort((a, b) => {
+          const aHasCall = a.status !== 'Pending' || Boolean(a.call_disposition) || Boolean(a.called_at);
+          const bHasCall = b.status !== 'Pending' || Boolean(b.call_disposition) || Boolean(b.called_at);
+          if (aHasCall && !bHasCall) return -1;
+          if (!aHasCall && bHasCall) return 1;
+          return a.id - b.id;
+        });
+
+        const keeper = list[0];
+        const duplicates = list.slice(1);
+
+        for (const dup of duplicates) {
+          // Re-link call logs to primary keeper record
+          await runner.run('UPDATE call_logs SET lead_id = ? WHERE lead_id = ?', [keeper.id, dup.id]);
+          // Delete redundant duplicate record
+          await runner.run('DELETE FROM leads WHERE id = ?', [dup.id]);
+          deletedCount++;
+        }
       }
     });
 
     return res.json({
       success: true,
-      message: `Seeded ${count} realistic Rajasthan industrial power tool leads into dialer queue.`,
-      count,
+      message: deletedCount > 0
+        ? `Deduplication complete: Merged ${mergedGroups} duplicate groups and removed ${deletedCount} redundant duplicate leads.`
+        : 'Zero duplicates found! Every lead in the queue has a unique contact number.',
+      deletedCount,
+      mergedGroups,
     });
   } catch (err) {
-    console.error('Seed error:', err);
-    return res.status(500).json({ error: 'Failed to seed sample leads.' });
+    console.error('Deduplicate error:', err);
+    return res.status(500).json({ error: 'Failed to deduplicate leads: ' + err.message });
+  }
+});
+
+router.get('/leads/duplicates-check', async (req, res) => {
+  try {
+    const dups = await db.all(`
+      SELECT phone_number, COUNT(*) as count
+      FROM leads
+      GROUP BY phone_number
+      HAVING count > 1
+    `);
+    const totalDuplicateRows = dups.reduce((acc, d) => acc + (d.count - 1), 0);
+    return res.json({
+      duplicateGroupsCount: dups.length,
+      totalDuplicates: totalDuplicateRows,
+      hasDuplicates: totalDuplicateRows > 0
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

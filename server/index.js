@@ -19,13 +19,25 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Health check
-app.get(['/api/health', '/health'], (req, res) => {
+// Health check with live database ping
+app.get(['/api/health', '/health'], async (req, res) => {
+  let dbStatus = 'connected';
+  let dbError = null;
+  let usersCount = 0;
+  try {
+    const row = await db.get('SELECT count(*) as count FROM users');
+    usersCount = row ? row.count : 0;
+  } catch (err) {
+    dbStatus = 'error';
+    dbError = err.message + (err.cause ? ` (${err.cause.message || err.cause.code})` : '');
+  }
+
   res.json({
-    status: 'ok',
+    status: dbStatus === 'connected' ? 'ok' : 'degraded',
     service: 'Sequential Lead Dialer CRM API',
     database: db.isTurso ? 'Turso Cloud SQLite' : 'Local SQLite',
-    tursoConfigured: Boolean(process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL),
+    dbStatus,
+    usersCount,
     timestamp: new Date().toISOString()
   });
 });
@@ -40,8 +52,10 @@ app.use('/agent', agentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/admin', adminRoutes);
 
-// Run auto seed on start
-seedDefaults().catch(console.error);
+// Run auto seed on start only when not running in serverless production
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  seedDefaults().catch(console.error);
+}
 
 // Serve frontend static build if built locally
 const distPath = path.resolve(__dirname, '../dist');
@@ -54,6 +68,14 @@ if (fs.existsSync(distPath)) {
     next();
   });
 }
+
+// Browser navigation fallback: redirect direct HTML browser navigations to '/'
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.accepts('html')) {
+    return res.redirect('/');
+  }
+  next();
+});
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.listen(PORT, () => {

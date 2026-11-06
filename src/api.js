@@ -78,6 +78,8 @@ export const api = {
     resetLead: (id) => request(`/admin/leads/${id}/reset`, { method: 'POST' }),
     deleteLead: (id) => request(`/admin/leads/${id}`, { method: 'DELETE' }),
     clearQueue: () => request('/admin/leads/clear-queue', { method: 'POST' }),
+    deduplicateLeads: () => request('/admin/leads/deduplicate', { method: 'POST' }),
+    checkDuplicates: () => request('/admin/leads/duplicates-check'),
 
     previewFile: (formData) =>
       request('/admin/leads/preview-file', {

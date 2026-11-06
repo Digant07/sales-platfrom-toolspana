@@ -16,8 +16,24 @@ router.get(['/login', '/'], (req, res) => {
       message: 'Auth service active. Submit POST request to /api/auth/login to authenticate.',
     });
   }
-  // Otherwise, automatically redirect browser users to the frontend application
-  return res.redirect('/');
+  // For web browsers, provide an explicit HTML auto-redirect so the browser immediately opens the CRM app
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0; url=/">
+  <script>window.location.replace('/');</script>
+  <title>Redirecting to Sequential Lead Dialer CRM...</title>
+</head>
+<body style="font-family: system-ui, -apple-system, sans-serif; background-color: #020617; color: #94a3b8; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center;">
+  <div>
+    <h2 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 0.5rem;">Redirecting to Sequential Lead Dialer CRM...</h2>
+    <p style="font-size: 0.85rem; margin-bottom: 1rem;">If you are not redirected automatically, please click below:</p>
+    <a href="/" style="display: inline-block; padding: 0.5rem 1rem; background: #ffffff; color: #020617; font-weight: 600; font-size: 0.85rem; text-decoration: none; border-radius: 6px;">Open Dialer Console</a>
+  </div>
+</body>
+</html>`);
 });
 
 // POST /api/auth/login
@@ -68,7 +84,8 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err);
-    return res.status(500).json({ error: 'Internal server error during login: ' + err.message });
+    const causeMsg = err.cause ? ` (${err.cause.message || err.cause.code || err.cause})` : '';
+    return res.status(500).json({ error: 'Internal server error during login: ' + err.message + causeMsg });
   }
 });
 
