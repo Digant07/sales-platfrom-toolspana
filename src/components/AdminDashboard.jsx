@@ -457,47 +457,47 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       {/* Top Admin Navigation Bar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/20">
-              <PhoneCall className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-white shadow-xs">
+              <PhoneCall className="w-4 h-4 text-slate-200" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-slate-900 text-base">Sequential Dialer CRM</h1>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                <h1 className="font-bold text-slate-900 text-sm sm:text-base tracking-tight">Sequential Dialer CRM</h1>
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                   Operations Admin
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Logged in as <strong>{user?.name || user?.username}</strong>
+                Logged in as <strong className="text-slate-700">{user?.name || user?.username}</strong>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition shadow-2xs"
               title="Download Excel with all disposition notes"
             >
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Export Updated Excel</span>
+              <span className="hidden sm:inline">Export Leads Excel</span>
             </button>
 
             <button
               onClick={handleSeedSample}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition shadow-2xs"
-              title="Reload the 29 Rajasthan power tool leads catalog"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition shadow-2xs"
+              title="Reload Rajasthan industrial power tools leads catalog"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span className="hidden sm:inline">Load Sample Leads</span>
+              <span className="hidden sm:inline">Reload Catalog</span>
             </button>
 
             <button
               onClick={logout}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 hover:text-rose-600 border border-slate-300 rounded-xl transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition shadow-2xs"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Logout</span>
@@ -506,13 +506,13 @@ export default function AdminDashboard() {
         </div>
 
         {/* Tab Strip */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex overflow-x-auto border-t border-slate-100 scrollbar-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex overflow-x-auto border-t border-slate-100 scrollbar-none gap-1">
           <button
             onClick={() => { setActiveTab('overview'); loadAnalytics(); }}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'overview'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
+                ? 'border-slate-900 text-slate-950 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-900 font-medium'
             }`}
           >
             <LayoutDashboard className="w-4 h-4" />
@@ -521,16 +521,16 @@ export default function AdminDashboard() {
 
           <button
             onClick={() => { setActiveTab('call-logs'); loadCallLogs(1); }}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'call-logs'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
+                ? 'border-slate-900 text-slate-950 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-900 font-medium'
             }`}
           >
             <Headphones className="w-4 h-4" />
             <span>Call Activity & Audit Logs</span>
             {callLogsSummary.total_calls > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-100 text-indigo-700">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
                 {callLogsSummary.total_calls}
               </span>
             )}
@@ -538,10 +538,10 @@ export default function AdminDashboard() {
 
           <button
             onClick={() => { setActiveTab('leads'); loadLeads(pagination.page); }}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'leads'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
+                ? 'border-slate-900 text-slate-950 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-900 font-medium'
             }`}
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -550,10 +550,10 @@ export default function AdminDashboard() {
 
           <button
             onClick={() => setActiveTab('upload')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'upload'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
+                ? 'border-slate-900 text-slate-950 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-900 font-medium'
             }`}
           >
             <Upload className="w-4 h-4" />
@@ -562,10 +562,10 @@ export default function AdminDashboard() {
 
           <button
             onClick={() => setActiveTab('manual')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'manual'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
+                ? 'border-slate-900 text-slate-950 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-900 font-medium'
             }`}
           >
             <PlusCircle className="w-4 h-4" />
@@ -574,10 +574,10 @@ export default function AdminDashboard() {
 
           <button
             onClick={() => { setActiveTab('agents'); loadAgents(); }}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-bold border-b-2 transition whitespace-nowrap ${
               activeTab === 'agents'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
+                ? 'border-slate-900 text-slate-950 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-900 font-medium'
             }`}
           >
             <Users className="w-4 h-4" />

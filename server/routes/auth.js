@@ -5,17 +5,19 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
-// GET /api/auth/login (Health & status check, redirects browsers to frontend login)
-router.get('/login', (req, res) => {
-  if (req.accepts('html')) {
-    return res.redirect('/');
+// GET /api/auth/login or /api/auth (Redirect browser navigations directly to the portal web app)
+router.get(['/login', '/'], (req, res) => {
+  // If requested as JSON via API call, return status info
+  if (req.headers.accept && req.headers.accept.includes('application/json') && !req.headers.accept.includes('text/html')) {
+    return res.json({
+      status: 'ok',
+      service: 'Auth Service',
+      database: db.isTurso ? 'Turso Cloud SQLite' : 'Local SQLite',
+      message: 'Auth service active. Submit POST request to /api/auth/login to authenticate.',
+    });
   }
-  res.json({
-    status: 'ok',
-    service: 'Auth Service',
-    database: db.isTurso ? 'Turso Cloud SQLite' : 'Local SQLite',
-    message: 'Login endpoint is active. Send a POST request with { username, password } to log in.',
-  });
+  // Otherwise, automatically redirect browser users to the frontend application
+  return res.redirect('/');
 });
 
 // POST /api/auth/login
