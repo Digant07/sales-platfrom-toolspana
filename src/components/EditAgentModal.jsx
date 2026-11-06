@@ -195,12 +195,13 @@ export default function EditAgentModal({ agent, onClose, onUpdated, onDeleted })
           </div>
 
           {/* Password Reset Field */}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                Change Password
+          <div className="bg-slate-50 border border-slate-300/90 rounded-lg p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-slate-700" />
+                <span>Reset / Change Password</span>
               </label>
-              <span className="text-[10px] text-slate-400 font-medium">Leave empty to keep current</span>
+              <span className="text-[10px] text-slate-500 font-medium">Leave empty to keep current</span>
             </div>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -210,20 +211,26 @@ export default function EditAgentModal({ agent, onClose, onUpdated, onDeleted })
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter new password (min. 4 chars)..."
-                className="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 font-mono"
+                placeholder="Type new password here (min. 4 characters)..."
+                className="w-full pl-9 pr-10 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 font-mono text-xs font-bold"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-800"
+                title={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {password && (
-              <p className="mt-1 text-[10px] text-emerald-700 font-medium">
-                Password will be encrypted and updated upon saving.
+            {password ? (
+              <p className="text-[11px] text-emerald-800 font-semibold flex items-center gap-1">
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>New password will be securely hashed with bcrypt upon clicking Save.</span>
+              </p>
+            ) : (
+              <p className="text-[10px] text-slate-500">
+                Type a new password above to reset this agent's password.
               </p>
             )}
           </div>
@@ -322,3 +329,4 @@ export default function EditAgentModal({ agent, onClose, onUpdated, onDeleted })
     </div>
   );
 }
+
