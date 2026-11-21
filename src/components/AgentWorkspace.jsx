@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { QRCodeSVG } from 'qrcode.react';
+import { useLiveClock, formatDate, formatDateTime, formatTimeOnly, getFutureISO, getTomorrowAt, getFutureDayAt } from '../utils/date';
 import {
   PhoneCall,
   Phone,
@@ -33,6 +34,7 @@ import {
 
 export default function AgentWorkspace() {
   const { user, logout } = useAuth();
+  const { formattedDate, formattedTime } = useLiveClock();
 
   const [activeLead, setActiveLead] = useState(null);
   const [stats, setStats] = useState({
@@ -295,14 +297,28 @@ export default function AgentWorkspace() {
                   Calling Station Active
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+              <p className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
                 <ShieldCheck className="w-3 h-3 text-slate-400" />
                 <span>Single-Lead Lock Active · Telecaller: <strong className="text-slate-200">{user?.name || user?.username}</strong></span>
+                <span className="text-slate-600 sm:hidden">·</span>
+                <span className="sm:hidden text-emerald-400 font-mono font-medium">📅 {formattedDate}</span>
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* Live Operational Date & Session Clock */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-white">
+                <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{formattedDate}</span>
+              </div>
+              <span className="w-1 h-1 rounded-full bg-slate-700"></span>
+              <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-400">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>{formattedTime}</span>
+              </div>
+            </div>
             {/* Shift Metrics HUD */}
             <div className="hidden lg:flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1 text-xs">
               <span className="text-slate-400 text-[11px] uppercase font-bold tracking-wider">Shift Calls:</span>
@@ -666,7 +682,12 @@ export default function AgentWorkspace() {
                                 name="disposition"
                                 value={d.id}
                                 checked={selected}
-                                onChange={(e) => setDisposition(e.target.value)}
+                                onChange={(e) => {
+                                  setDisposition(e.target.value);
+                                  if (e.target.value === 'Call Back Later' && !followUpDate) {
+                                    setFollowUpDate(getTomorrowAt(10));
+                                  }
+                                }}
                                 className="w-4 h-4 text-slate-900 focus:ring-slate-900 border-slate-300 mt-0.5"
                               />
                               <div>
@@ -685,14 +706,40 @@ export default function AgentWorkspace() {
 
                   {/* Step 2: Follow-Up Date Scheduler (if Call Back Later) */}
                   {disposition === 'Call Back Later' && (
-                    <div className="bg-amber-50/70 border border-amber-200 p-3.5 rounded-lg space-y-1.5">
-                      <label className="block text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Schedule Callback Date & Time <span className="text-rose-500">*</span></span>
-                      </label>
+                    <div className="bg-amber-50/70 border border-amber-200 p-3.5 rounded-lg space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Schedule Callback Date & Time <span className="text-rose-500">*</span></span>
+                        </label>
+                        <span className="text-[10px] font-mono font-medium text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded border border-amber-300">
+                          📅 {formattedDate}
+                        </span>
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: '+2 Hours', getVal: () => getFutureISO(2 * 60) },
+                          { label: 'Tomorrow 10 AM', getVal: () => getTomorrowAt(10) },
+                          { label: 'Tomorrow 3 PM', getVal: () => getTomorrowAt(15) },
+                          { label: 'In 2 Days', getVal: () => getFutureDayAt(2, 11) },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => setFollowUpDate(preset.getVal())}
+                            className="px-2 py-0.5 text-[11px] font-semibold bg-white border border-amber-300 hover:bg-amber-100/80 rounded text-amber-950 transition shadow-2xs cursor-pointer"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+
                       <input
                         type="datetime-local"
                         required
+                        min={new Date().toISOString().slice(0, 16)}
                         value={followUpDate}
                         onChange={(e) => setFollowUpDate(e.target.value)}
                         className="block w-full text-xs bg-white border border-amber-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-amber-500 focus:outline-none"
@@ -787,7 +834,7 @@ export default function AgentWorkspace() {
                 <div>
                   <h3 className="font-bold text-sm tracking-tight">Shift Calling Log</h3>
                   <p className="text-[11px] text-slate-400">
-                    Your recent calls logged today ({recentLogs.length} total)
+                    Shift Date: <span className="text-slate-200 font-medium">{formattedDate}</span> · {recentLogs.length} calls logged
                   </p>
                 </div>
                 <button
@@ -832,7 +879,7 @@ export default function AgentWorkspace() {
                         </span>
                         {log.follow_up_date && (
                           <span className="text-[10px] text-amber-800 font-medium">
-                            Callback: {new Date(log.follow_up_date).toLocaleDateString()}
+                            Callback: {formatDateTime(log.follow_up_date)}
                           </span>
                         )}
                       </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Phone, User, Calendar, Clock, FileText, CheckCircle2, AlertCircle, PhoneForwarded, Copy, Check } from 'lucide-react';
+import { formatDateTime } from '../utils/date';
 
 export default function CallLogModal({ log, onClose }) {
   const [copied, setCopied] = React.useState(false);
@@ -56,7 +57,7 @@ export default function CallLogModal({ log, onClose }) {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Called on <span className="font-mono">{log.called_at ? new Date(log.called_at).toLocaleString() : 'N/A'}</span>
+                Called on <span className="font-mono">{log.called_at ? formatDateTime(log.called_at) : 'N/A'}</span>
               </p>
             </div>
           </div>
@@ -155,7 +156,7 @@ export default function CallLogModal({ log, onClose }) {
               <div>
                 <span className="text-xs font-bold block">Follow-Up Scheduled</span>
                 <span className="text-xs font-mono font-semibold text-amber-800">
-                  {new Date(log.follow_up_date).toLocaleString()}
+                  {formatDateTime(log.follow_up_date)}
                 </span>
               </div>
             </div>

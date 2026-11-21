@@ -4,6 +4,7 @@ import { api } from '../api';
 import LeadDetailsModal from './LeadDetailsModal';
 import CallLogModal from './CallLogModal';
 import EditAgentModal from './EditAgentModal';
+import { useLiveClock, formatDate, formatDateTime } from '../utils/date';
 import {
   LayoutDashboard,
   Users,
@@ -41,6 +42,7 @@ import {
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
+  const { formattedDate, formattedTime } = useLiveClock();
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'call-logs' | 'leads' | 'upload' | 'manual' | 'agents'
@@ -521,10 +523,32 @@ export default function AdminDashboard() {
                   Operations Admin
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Logged in as <strong className="text-slate-700">{user?.name || user?.username}</strong>
+              <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+                <span>Logged in as <strong className="text-slate-700">{user?.name || user?.username}</strong></span>
+                <span className="text-slate-300">·</span>
+                <span className="font-medium text-slate-600 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-slate-400" />
+                  <span>{formattedDate}</span>
+                </span>
               </p>
             </div>
+          </div>
+
+          {/* Live Operational Date & Session Clock Badge */}
+          <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/90 text-slate-700 shadow-2xs">
+            <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{formattedDate}</span>
+            </div>
+            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+            <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-600">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span>{formattedTime}</span>
+            </div>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+              Live Shift
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -770,11 +794,19 @@ export default function AdminDashboard() {
               {/* Today Calling Velocity */}
               <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs flex flex-col justify-between">
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm mb-4">Today's Telecalling Velocity</h3>
+                  <h3 className="font-bold text-slate-900 text-sm mb-4 flex items-center justify-between">
+                    <span>Today's Telecalling Velocity</span>
+                    <span className="text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                      📅 {formattedDate}
+                    </span>
+                  </h3>
                   <div className="space-y-4">
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                      <span className="text-xs font-bold text-slate-500 uppercase">Calls Today</span>
-                      <p className="text-2xl font-black text-slate-900 mt-1">{analytics.kpis.totalCallsToday}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase">Calls Today</span>
+                        <span className="text-[10px] font-mono text-slate-400">Current Shift</span>
+                      </div>
+                      <p className="text-2xl font-black text-slate-900 mt-1 font-mono">{analytics.kpis.totalCallsToday}</p>
                     </div>
 
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
@@ -1078,7 +1110,7 @@ export default function AdminDashboard() {
                             <td className="px-3.5 py-3 whitespace-nowrap">
                               <div className="flex items-center gap-1.5 text-slate-700 font-mono text-[11px]">
                                 <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span>{log.called_at ? new Date(log.called_at).toLocaleString() : 'N/A'}</span>
+                                <span>{log.called_at ? formatDateTime(log.called_at) : 'N/A'}</span>
                               </div>
                               <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
                                 LOG #{log.id}
@@ -1175,7 +1207,7 @@ export default function AdminDashboard() {
                               {log.follow_up_date ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-amber-50 text-amber-800 border border-amber-200">
                                   <Calendar className="w-3 h-3 text-amber-600" />
-                                  {new Date(log.follow_up_date).toLocaleDateString()}
+                                  {formatDateTime(log.follow_up_date)}
                                 </span>
                               ) : (
                                 <span className="text-slate-300">—</span>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import { formatDate, formatDateTime } from '../utils/date';
 import {
   X,
   Phone,
@@ -181,7 +182,7 @@ export default function LeadDetailsModal({ lead, onClose, onReset }) {
               <div>
                 <span className="font-bold text-slate-200 block text-[11px]">1. Imported</span>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  {currentLead.created_at ? new Date(currentLead.created_at).toLocaleDateString() : 'Active'}
+                  {currentLead.created_at ? formatDate(currentLead.created_at) : 'Active'}
                 </span>
               </div>
             </div>
@@ -332,7 +333,7 @@ export default function LeadDetailsModal({ lead, onClose, onReset }) {
                             <div className="flex items-center gap-3 text-slate-500 font-mono text-[11px]">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                {log.called_at ? new Date(log.called_at).toLocaleString() : 'N/A'}
+                                {log.called_at ? formatDateTime(log.called_at) : 'N/A'}
                               </span>
                               <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
                                 {formatDuration(log.duration_seconds)}
@@ -351,7 +352,7 @@ export default function LeadDetailsModal({ lead, onClose, onReset }) {
                             {log.follow_up_date && (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[11px]">
                                 <Calendar className="w-3.5 h-3.5 text-amber-600" />
-                                Callback: {new Date(log.follow_up_date).toLocaleString()}
+                                Callback: {formatDateTime(log.follow_up_date)}
                               </span>
                             )}
                           </div>
